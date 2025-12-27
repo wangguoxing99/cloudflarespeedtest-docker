@@ -1,0 +1,13 @@
+version: '3'
+services:
+  cfst-web:
+    build: .
+    image: cfst-web-manager
+    container_name: cfst-web
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/app/data  # 挂载目录，保存上传的文件和配置
+    environment:
+      - TZ=Asia/Shanghai
