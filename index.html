@@ -8,14 +8,11 @@
     <style>
         body { padding: 20px; background-color: #f4f6f9; }
         .card { box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-        /* 日志区域样式 */
         #logs { 
             background: #1e1e1e; color: #a9b7c6; 
-            height: 600px; /* 稍微调高一点 */
-            overflow-y: scroll; 
+            height: 600px; overflow-y: scroll; 
             padding: 15px; font-family: 'Consolas', monospace; 
-            font-size: 13px; line-height: 1.4;
-            white-space: pre-wrap; 
+            font-size: 13px; line-height: 1.4; white-space: pre-wrap; 
         }
     </style>
 </head>
@@ -24,15 +21,19 @@
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h2>🚀 CFST 自动优选 (Docker)</h2>
         <div>
-            <a href="https://github.com/XIU2/CloudflareSpeedTest/releases" target="_blank" class="btn btn-outline-primary btn-sm">GitHub Releases</a>
+            <a href="https://github.com/XIU2/CloudflareSpeedTest/releases" target="_blank" class="btn btn-outline-primary btn-sm">Release 下载</a>
             <span class="badge bg-secondary ms-2" id="st_cfst_badge">CFST: 检测中</span>
+            <span class="badge bg-secondary ms-1" id="st_ip4_badge">IP4: 检测中</span>
         </div>
     </div>
     
     <div class="row">
         <div class="col-lg-5">
             <div class="card mb-3">
-                <div class="card-header fw-bold bg-white">1. 核心文件上传</div>
+                <div class="card-header fw-bold bg-white d-flex justify-content-between">
+                    <span>1. 核心文件管理</span>
+                    <button class="btn btn-sm btn-link p-0" onclick="checkStatus()">刷新状态</button>
+                </div>
                 <div class="card-body">
                     <div class="input-group input-group-sm mb-2">
                         <span class="input-group-text">执行文件 (cfst)</span>
@@ -69,13 +70,11 @@
                             <div class="col-12"><input type="text" class="form-control form-control-sm" name="zone_id" value="{{.ZoneID}}" placeholder="Zone ID" required></div>
                         </div>
 
-                        <h6 class="text-muted mb-2">域名解析 (支持多域名)</h6>
+                        <h6 class="text-muted mb-2">域名解析</h6>
                         <div class="mb-3">
-                            <input type="text" class="form-control" name="domains" value="{{.Domains}}" placeholder="例如: speed.abc.com, cdn.abc.com" required>
+                            <input type="text" class="form-control" name="domains" value="{{.Domains}}" placeholder="例如: speed.abc.com" required>
                             <div class="form-text small">
-                                模式逻辑：<br>
-                                1. <b>单域名</b>：解析速度最快的 <b>Top N</b> 个 IP 到该域名 (负载均衡)。<br>
-                                2. <b>多域名</b> (逗号隔开)：<b>1对1 映射</b>。第1快的IP -> 域名1，第2快 -> 域名2。
+                                支持多域名逗号分隔，实现按速度 1对1 分发。
                             </div>
                         </div>
 
@@ -83,8 +82,7 @@
                         
                         <div class="mb-2">
                             <label class="small text-muted">自定义测速地址 (-url)</label>
-                            <input type="text" class="form-control form-control-sm" name="download_url" value="{{.DownloadURL}}" placeholder="留空使用默认 (200MB)">
-                            <div class="form-text small" style="margin-top:0;">可填入自建的大文件下载链接，为空则使用 Cloudflare 官方默认地址。</div>
+                            <input type="text" class="form-control form-control-sm" name="download_url" value="{{.DownloadURL}}" placeholder="留空使用默认">
                         </div>
 
                         <div class="row g-2 mb-2">
@@ -95,19 +93,42 @@
                                     <input type="radio" class="btn-check" name="ip_type" id="v6" value="v6" {{if eq .IPType "v6"}}checked{{end}}>
                                     <label class="btn btn-outline-primary" for="v6">仅 IPv6</label>
                                     <input type="radio" class="btn-check" name="ip_type" id="both" value="both" {{if eq .IPType "both"}}checked{{end}}>
-                                    <label class="btn btn-outline-primary" for="both">v4+v6 混合</label>
+                                    <label class="btn btn-outline-primary" for="both">v4+v6</label>
                                 </div>
                             </div>
                         </div>
+
                         <div class="row g-2 mb-2">
-                            <div class="col-6">
-                                <label class="small text-muted">单域名解析数 (默认10)</label>
+                            <div class="col-4">
+                                <label class="small text-muted">延迟上限ms (-tl)</label>
+                                <input type="number" class="form-control form-control-sm" name="max_delay" value="{{.MaxDelay}}">
+                            </div>
+                            <div class="col-4">
+                                <label class="small text-muted">延迟下限ms (-tll)</label>
+                                <input type="number" class="form-control form-control-sm" name="min_delay" value="{{.MinDelay}}">
+                            </div>
+                            <div class="col-4">
+                                <label class="small text-muted">测速端口 (-tp)</label>
+                                <input type="number" class="form-control form-control-sm" name="test_port" value="{{.TestPort}}" placeholder="443">
+                            </div>
+                        </div>
+
+                        <div class="row g-2 mb-2">
+                            <div class="col-4">
+                                <label class="small text-muted">单域IP数</label>
                                 <input type="number" class="form-control form-control-sm" name="max_result" value="{{.MaxResult}}">
                             </div>
-                             <div class="col-6">
+                             <div class="col-4">
                                 <label class="small text-muted">测速数量 (-dn)</label>
                                 <input type="number" class="form-control form-control-sm" name="test_count" value="{{.TestCount}}">
                             </div>
+                             <div class="col-4">
+                                <label class="small text-muted">下载下限 (-sl)</label>
+                                <input type="number" step="0.01" class="form-control form-control-sm" name="min_speed" value="{{.MinSpeed}}">
+                            </div>
+                        </div>
+
+                        <div class="row g-2 mb-2">
                             <div class="col-6">
                                 <label class="small text-muted">地区码 (如 HKG)</label>
                                 <input type="text" class="form-control form-control-sm" name="colo" value="{{.Colo}}">
@@ -149,7 +170,6 @@
     let logOffset = 0;
     const logsDiv = document.getElementById('logs');
 
-    // 增量获取日志
     function fetchLogs() {
         fetch('/api/logs?offset=' + logOffset)
             .then(r => r.json())
@@ -160,38 +180,31 @@
                     logsDiv.scrollTop = logsDiv.scrollHeight;
                 }
             })
-            .catch(e => console.log("日志轮询...", e));
+            .catch(e => {});
     }
-
-    // 每秒轮询一次
-    setInterval(fetchLogs, 1000);
+    setInterval(fetchLogs, 1500);
 
     function runNow() {
-        if(confirm("确定立即运行测速吗？可能耗时较长。")) {
+        if(confirm("确定立即运行测速吗？")) {
             fetch('/api/run').then(r=>r.text()).then(alert);
         }
     }
 
     function upload(type) {
         const input = document.getElementById('file_' + type);
-        if (!input.files[0]) return alert("请先选择文件");
+        if (!input.files[0]) return alert("请选择文件");
         const fd = new FormData();
         fd.append("file", input.files[0]);
         fd.append("type", type);
         
-        // 简单的 Loading 提示
         const btn = event.target;
         const orgText = btn.innerText;
         btn.innerText = "上传中...";
         btn.disabled = true;
 
         fetch('/api/upload', {method:'POST', body:fd}).then(r=>{
-            if(r.ok) { 
-                alert("上传成功"); 
-                checkStatus(); 
-            } else {
-                alert("上传失败");
-            }
+            if(r.ok) { alert("上传成功"); checkStatus(); } 
+            else { alert("上传失败"); }
             btn.innerText = orgText;
             btn.disabled = false;
         });
@@ -199,10 +212,20 @@
 
     function checkStatus() {
         fetch('/api/status').then(r=>r.json()).then(d => {
-            const el = document.getElementById('st_cfst_badge');
-            el.className = d.has_cfst ? "badge bg-success" : "badge bg-danger";
-            el.innerText = d.has_cfst ? "CFST: 已安装" : "CFST: 未上传";
+            updateBadge('st_cfst_badge', d.has_cfst, "CFST");
+            updateBadge('st_ip4_badge', d.has_ip4, "IP4");
         });
+    }
+
+    function updateBadge(id, status, name) {
+        const el = document.getElementById(id);
+        if(status) {
+            el.className = "badge bg-success ms-1";
+            el.innerText = name + ": √";
+        } else {
+            el.className = "badge bg-danger ms-1";
+            el.innerText = name + ": ×";
+        }
     }
     checkStatus();
 </script>
