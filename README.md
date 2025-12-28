@@ -68,6 +68,7 @@ docker run -d \
     -v $(pwd)/data:/app/data \
     -e TZ=Asia/Shanghai \
     cfst-web
+
 #⚙️ 初始化与使用指南
 容器启动后，请访问 http://你的服务器IP:8080 进入管理后台。
 
