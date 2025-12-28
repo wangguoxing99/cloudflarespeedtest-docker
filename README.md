@@ -1,4 +1,27 @@
-# ⚙️初始化与使用指南
+# CloudflareSpeedTest Web Manager (Docker)
+
+一个基于 Docker 的轻量级 Web 管理面板，用于自动化运行 [CloudflareSpeedTest](https://github.com/XIU2/CloudflareSpeedTest)，并将最优 IP 自动解析到 Cloudflare 托管的域名。
+
+无需手动 SSH 连接服务器，全通过 Web 界面管理核心文件、配置参数、查看实时日志并自动更新 DNS。
+
+## ✨ 主要特性
+
+* **轻量化**：基于 Alpine Linux，镜像极小，占用资源极低。
+* **Web 文件管理**：支持在网页端上传/更新 `cfst` 二进制文件及 `ip.txt`/`ipv6.txt`，无需重启容器，支持多架构（AMD64/ARM64）。
+* **灵活测速配置**：
+    * 支持 IPv4、IPv6 或混合测速。
+    * 支持自定义下载测速地址 (`-url`)。
+    * 支持指定测速端口 (`-tp`) 和延迟上下限 (`-tl`/`-tll`)。
+    * 支持指定地区码（如 `HKG`, `NRT`）并自动开启 HTTPing。
+* **智能 DNS 解析**：
+    * **负载均衡模式**：单域名对应多个优选 IP（如 `speed.abc.com` 解析到最快的 10 个 IP）。
+    * **1对1 分发模式**：多域名按速度排名一一对应解析（如 `Line1` 解析第1快，`Line2` 解析第2快...）。
+    * **自动修正**：强制要求设置主域名，完美解决 Cloudflare API 导致的 `yx.abc.com.abc.com` 双重后缀问题。
+    * **彻底清理**：每次更新前自动一次性获取并清理旧记录，防止记录残留。
+* **任务自动化**：内置 Cron 定时任务，全自动测速并更新 DNS。
+* **实时日志**：支持网页端查看实时滚动日志，并支持 **一键清除** 历史日志。
+
+## ⚙️初始化与使用指南
 容器启动后，请访问 http://你的服务器IP:8080 进入管理后台。
 
 第一步：上传核心文件 (首次运行必须)
@@ -55,30 +78,6 @@ Zone ID: 域名的区域 ID (在域名概述页右下角)。
 
 如果日志太长，可以点击 "🗑️ 清除日志" 按钮清空显示。
 
-
-# CloudflareSpeedTest Web Manager (Docker)
-
-一个基于 Docker 的轻量级 Web 管理面板，用于自动化运行 [CloudflareSpeedTest](https://github.com/XIU2/CloudflareSpeedTest)，并将最优 IP 自动解析到 Cloudflare 托管的域名。
-
-无需手动 SSH 连接服务器，全通过 Web 界面管理核心文件、配置参数、查看实时日志并自动更新 DNS。
-
-## ✨ 主要特性
-
-* **轻量化**：基于 Alpine Linux，镜像极小，占用资源极低。
-* **Web 文件管理**：支持在网页端上传/更新 `cfst` 二进制文件及 `ip.txt`/`ipv6.txt`，无需重启容器，支持多架构（AMD64/ARM64）。
-* **灵活测速配置**：
-    * 支持 IPv4、IPv6 或混合测速。
-    * 支持自定义下载测速地址 (`-url`)。
-    * 支持指定测速端口 (`-tp`) 和延迟上下限 (`-tl`/`-tll`)。
-    * 支持指定地区码（如 `HKG`, `NRT`）并自动开启 HTTPing。
-* **智能 DNS 解析**：
-    * **负载均衡模式**：单域名对应多个优选 IP（如 `speed.abc.com` 解析到最快的 10 个 IP）。
-    * **1对1 分发模式**：多域名按速度排名一一对应解析（如 `Line1` 解析第1快，`Line2` 解析第2快...）。
-    * **自动修正**：强制要求设置主域名，完美解决 Cloudflare API 导致的 `yx.abc.com.abc.com` 双重后缀问题。
-    * **彻底清理**：每次更新前自动一次性获取并清理旧记录，防止记录残留。
-* **任务自动化**：内置 Cron 定时任务，全自动测速并更新 DNS。
-* **实时日志**：支持网页端查看实时滚动日志，并支持 **一键清除** 历史日志。
-
 ## 🛠️ 部署方式
 
 你需要先安装 Docker。推荐使用 Docker Compose。
@@ -92,7 +91,7 @@ Zone ID: 域名的区域 ID (在域名概述页右下角)。
     services:
       cfst-web:
         # 如果你自己构建了镜像，请使用构建好的镜像名
-        # image: your-image-name:latest
+　　　　 image: ghcr.io/wangguoxing99/cloudflarespeedtest-docker
         build: .  # 如果你有源码，直接构建；如果没有，请使用预编译镜像
         container_name: cfst-web
         restart: unless-stopped
@@ -125,6 +124,8 @@ docker run -d \
     -p 8080:8080 \
     -v $(pwd)/data:/app/data \
     -e TZ=Asia/Shanghai \
-    cfst-web
+    cfst-web　　　　　＃或者直接使用ghcr.io/wangguoxing99/cloudflarespeedtest-docker
+                        
+
 
 
