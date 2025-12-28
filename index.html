@@ -157,7 +157,10 @@
             <div class="card h-100">
                 <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
                     <span>📺 实时动态日志</span>
-                    <button onclick="runNow()" class="btn btn-sm btn-warning">⚡ 立即测速</button>
+                    <div>
+                        <button onclick="clearLogs()" class="btn btn-sm btn-outline-light me-2">🗑️ 清除日志</button>
+                        <button onclick="runNow()" class="btn btn-sm btn-warning">⚡ 立即测速</button>
+                    </div>
                 </div>
                 <div class="card-body p-0 bg-dark">
                     <div id="logs"></div>
@@ -185,6 +188,17 @@
     setInterval(fetchLogs, 1500);
 
     function runNow() { if(confirm("确定立即运行测速吗？")) { fetch('/api/run').then(r=>r.text()).then(alert); } }
+
+    function clearLogs() {
+        if(confirm("确定清空当前显示的日志吗？")) {
+            fetch('/api/logs/clear').then(r=>{
+                if(r.ok) {
+                    logsDiv.textContent = "";
+                    logOffset = 0;
+                }
+            });
+        }
+    }
 
     function upload(type) {
         const input = document.getElementById('file_' + type);
