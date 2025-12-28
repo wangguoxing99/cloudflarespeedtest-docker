@@ -26,8 +26,8 @@ type Config struct {
 	ZoneID        string  `json:"zone_id"`        // Cloudflare Zone ID
 	APIKey        string  `json:"api_key"`        // Global API Key
 	Email         string  `json:"email"`          // Cloudflare 邮箱
-	MainDomain    string  `json:"main_domain"`    // [新增] 主域名 (Zone Name, 如 abc.com)
-	Domains       string  `json:"domains"`        // 优选域名列表 (如 yx.abc.com)
+	MainDomain    string  `json:"main_domain"`    // 主域名 (Zone Name)
+	Domains       string  `json:"domains"`        // 优选域名列表
 	
 	// 测速参数
 	DownloadURL   string  `json:"download_url"`
@@ -78,7 +78,7 @@ func main() {
 	http.HandleFunc("/api/logs", handleLogs)
 	http.HandleFunc("/api/status", handleStatus)
 
-	writeLog(fmt.Sprintf("Web server running on :8080 (Version: %s)", "1.4.0"))
+	writeLog(fmt.Sprintf("Web server running on :8080 (Version: %s)", "1.5.0"))
 	log.Println("Web server started on :8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
@@ -124,16 +124,14 @@ func runSpeedTestAndUpdateDNS() {
 		return
 	}
 
-	// 确定主域名 (用于剔除后缀)
 	zoneName := config.MainDomain
 	if zoneName == "" && config.ZoneID != "" {
-		// 如果用户没填，尝试自动获取
 		fetched, err := fetchZoneName()
 		if err == nil {
 			zoneName = fetched
 			writeLog(fmt.Sprintf("✅ 自动识别主域名: %s", zoneName))
 		} else {
-			writeLog(fmt.Sprintf("⚠️ 自动识别主域名失败 (可能是权限不足)，建议在设置中手动填写主域名: %v", err))
+			writeLog(fmt.Sprintf("⚠️ 自动识别主域名失败: %v", err))
 		}
 	} else {
 		writeLog(fmt.Sprintf("✅ 使用配置的主域名: %s", zoneName))
@@ -212,12 +210,12 @@ func updateDNSStrategy(domains []string, ips []string, zoneName string) {
 		if limit <= 0 { limit = 10 }
 		if len(ips) > limit { ips = ips[:limit] }
 		
-		writeLog(fmt.Sprintf("📡 更新域名 [%s] (负载均衡)...", domain))
+		writeLog(fmt.Sprintf("📡 更新域名 [%s] (负载均衡模式)...", domain))
 		updateCloudflareDNS(domain, ips, zoneName)
 		return
 	}
 
-	writeLog(fmt.Sprintf("📡 更新 %d 个域名 (1对1 分发)...", len(domains)))
+	writeLog(fmt.Sprintf("📡 更新 %d 个域名 (1对1 分发模式)...", len(domains)))
 	for i, domain := range domains {
 		if i >= len(ips) { break }
 		writeLog(fmt.Sprintf(" -> [%s] 解析至 [%s]", domain, ips[i]))
@@ -226,15 +224,27 @@ func updateDNSStrategy(domains []string, ips []string, zoneName string) {
 }
 
 func updateCloudflareDNS(domain string, newIPs []string, zoneName string) {
-	// 1. 获取记录
+	// 1. 获取现有记录 (关键修改：增加 per_page=100)
 	records, err := getDNSRecords(domain)
 	if err != nil {
-		writeLog(fmt.Sprintf("❌ 获取记录失败 [%s]: %v", domain, err))
+		writeLog(fmt.Sprintf("❌ 获取旧记录失败 [%s]: %v", domain, err))
 		return
 	}
 
-	// 2. 计算记录名 (解决双重后缀的核心)
-	// 如果 zoneName 存在 (e.g. abc.com)，且 domain 是 yx.abc.com，则 recordName = yx
+	if len(records) > 0 {
+		writeLog(fmt.Sprintf("🗑️ 发现 %d 条旧记录，正在清理...", len(records)))
+	} else {
+		writeLog(fmt.Sprintf("ℹ️ 未发现旧记录 [%s]", domain))
+	}
+
+	// 2. 删除旧记录
+	for _, r := range records {
+		if err := deleteDNSRecord(r); err != nil {
+			writeLog(fmt.Sprintf("⚠️ 删除记录失败 (ID: %s): %v", r, err))
+		}
+	}
+
+	// 3. 计算记录名 (处理双重后缀)
 	recordName := domain
 	if zoneName != "" {
 		domainLower := strings.ToLower(domain)
@@ -242,23 +252,17 @@ func updateCloudflareDNS(domain string, newIPs []string, zoneName string) {
 		if domainLower == zoneLower {
 			recordName = "@"
 		} else if strings.HasSuffix(domainLower, "."+zoneLower) {
-			// 截取后缀
 			recordName = domain[:len(domain)-len(zoneLower)-1]
 		}
-	}
-	// 如果计算出的 recordName 依然包含点，且没有匹配上 zoneName，
-	// 可能是用户没填 zoneName 且 API 也没获取到，此时 Cloudflare 可能会误判。
-	// 但只要用户填了 MainDomain，这里就是准确的子域名 (如 "yx")。
-
-	// 3. 删除旧记录
-	for _, r := range records {
-		deleteDNSRecord(r)
 	}
 
 	// 4. 创建新记录
 	for _, ip := range newIPs {
-		createDNSRecord(recordName, ip)
+		if err := createDNSRecord(recordName, ip); err != nil {
+			writeLog(fmt.Sprintf("❌ 创建记录失败 [%s -> %s]: %v", recordName, ip, err))
+		}
 	}
+	writeLog(fmt.Sprintf("✅ 已添加 %d 条新记录 [%s]", len(newIPs), domain))
 }
 
 // --- Cloudflare API ---
@@ -281,7 +285,8 @@ func fetchZoneName() (string, error) {
 }
 
 func getDNSRecords(domain string) ([]string, error) {
-	url := fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/dns_records?name=%s", config.ZoneID, domain)
+	// 关键修改：添加 per_page=100，确保能一次性获取并删除所有积压的记录
+	url := fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/dns_records?name=%s&per_page=100", config.ZoneID, domain)
 	req, _ := http.NewRequest("GET", url, nil)
 	setHeaders(req)
 	resp, err := http.DefaultClient.Do(req)
@@ -291,23 +296,31 @@ func getDNSRecords(domain string) ([]string, error) {
 	var res struct {
 		Success bool `json:"success"`
 		Result []struct { ID string `json:"id"` } `json:"result"`
+		Errors []interface{} `json:"errors"`
 	}
-	json.NewDecoder(resp.Body).Decode(&res)
-	if !res.Success { return nil, fmt.Errorf("api error") }
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil { return nil, err }
+	if !res.Success { return nil, fmt.Errorf("api error: %v", res.Errors) }
 	
 	var ids []string
 	for _, r := range res.Result { ids = append(ids, r.ID) }
 	return ids, nil
 }
 
-func deleteDNSRecord(id string) {
+func deleteDNSRecord(id string) error {
 	url := fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/dns_records/%s", config.ZoneID, id)
 	req, _ := http.NewRequest("DELETE", url, nil)
 	setHeaders(req)
-	http.DefaultClient.Do(req)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil { return err }
+	defer resp.Body.Close() // 关键修改：及时关闭连接
+	
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("status code %d", resp.StatusCode)
+	}
+	return nil
 }
 
-func createDNSRecord(name, ip string) {
+func createDNSRecord(name, ip string) error {
 	url := fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/dns_records", config.ZoneID)
 	typeStr := "A"
 	if strings.Contains(ip, ":") { typeStr = "AAAA" }
@@ -319,7 +332,13 @@ func createDNSRecord(name, ip string) {
 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(body))
 	setHeaders(req)
 	resp, err := http.DefaultClient.Do(req)
-	if err == nil { defer resp.Body.Close() }
+	if err != nil { return err }
+	defer resp.Body.Close() // 关键修改：及时关闭连接
+	
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("status code %d", resp.StatusCode)
+	}
+	return nil
 }
 
 func setHeaders(req *http.Request) {
@@ -398,7 +417,7 @@ func handleSave(w http.ResponseWriter, r *http.Request) {
 	config.ZoneID = r.FormValue("zone_id")
 	config.APIKey = r.FormValue("api_key")
 	config.Email = r.FormValue("email")
-	config.MainDomain = strings.TrimSpace(r.FormValue("main_domain")) // [新增]
+	config.MainDomain = strings.TrimSpace(r.FormValue("main_domain"))
 	config.Domains = r.FormValue("domains")
 	config.DownloadURL = r.FormValue("download_url")
 	config.IPType = r.FormValue("ip_type")
